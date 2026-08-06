@@ -1,0 +1,60 @@
+name: Build, Push and Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build backend image
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/expense-backend:latest ./backend
+
+      - name: Build frontend image
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/expense-frontend:latest ./frontend
+
+      - name: Push backend image
+        run: |
+          docker push ghcr.io/${{ github.repository_owner }}/expense-backend:latest
+
+      - name: Push frontend image
+        run: |
+          docker push ghcr.io/${{ github.repository_owner }}/expense-frontend:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: self-hosted
+
+    steps:
+      - name: Login to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Pull latest images
+        run: |
+          docker pull ghcr.io/${{ github.repository_owner }}/expense-backend:latest
+          docker pull ghcr.io/${{ github.repository_owner }}/expense-frontend:latest
+
+      - name: Restart application
+        run: |
+          docker compose down
+          docker compose up -d
